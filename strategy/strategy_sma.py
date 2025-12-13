@@ -20,7 +20,6 @@ from core.backtest_strategy import BaseStrategy
 from core.backtest_types import BacktestResult, Order, TradeRecord
 from core.chart import ChartConfig, ChartRenderer, TradeSignal
 from core.portfolio import Portfolio
-from core.telegram import TelegramSender
 
 
 # SMA 백테스트 설정 (쉽게 수정 가능하도록 JSON 유사 형태로 정의)
@@ -474,7 +473,6 @@ def render_ticker_chart(
 
 
 def send_sma_backtest_report(
-    sender: TelegramSender,
     metrics: Dict[str, Any],
     df_equity: "pd.DataFrame",
     trades: List[TradeRecord],
@@ -484,13 +482,13 @@ def send_sma_backtest_report(
     end_date: datetime,
     cfg: Dict[str, Any],
 ) -> None:
-    """공유 가능한 텔레그램 리포트를 생성 및 발송."""
+    """백테스트 리포트를 생성."""
     if not isinstance(data_provider, BacktestDataProvider):
         raise TypeError("Expected BacktestDataProvider instance for report generation")
 
     message = format_sma_backtest_message(metrics, trades)
-    print("Sending SMA backtest summary to Telegram...")
-    sender.send_message(message, raise_on_error=True)
+    print("SMA backtest summary:")
+    print(message)
 
     equity_curve = df_equity["equity"].dropna()
     benchmark_curve = None
@@ -607,20 +605,11 @@ def send_sma_backtest_report(
     )
     equity_chart_path = os.path.join(html_config.output_dir, html_config.equity_chart_filename)
 
-    print(f"Sending portfolio equity chart to Telegram... ({equity_chart_path})")
+    print(f"Portfolio equity chart saved: {equity_chart_path}")
     if os.path.exists(equity_chart_path):
-        sender.send_photo(
-            equity_chart_path,
-            caption="포트폴리오 vs 벤치마크 누적 수익률 차트",
-            raise_on_error=False,
-        )
+        print(f"Equity chart available at: {equity_chart_path}")
 
-    print(f"Sending HTML backtest report to Telegram... ({html_path})")
-    sender.send_document(
-        html_path,
-        caption="SMA 백테스트 HTML 리포트",
-        raise_on_error=False,
-    )
+    print(f"HTML backtest report saved: {html_path}")
 
 
 def _collect_sma_sweep_results(
@@ -737,7 +726,6 @@ def _build_sweep_plain_summary(results_df: "pd.DataFrame", limit: int = 10) -> s
 
 
 def send_sma_sweep_html_report(
-    sender: TelegramSender,
     results_df: "pd.DataFrame",
     short_windows: Sequence[int],
     long_windows: Sequence[int],
@@ -823,12 +811,7 @@ def send_sma_sweep_html_report(
     with open(file_path, "w", encoding="utf-8") as f:
         f.write("\n".join(html_lines))
 
-    print(f"Sending sweep HTML summary to Telegram... ({file_path})")
-    sender.send_document(
-        file_path,
-        caption="SMA 파라미터 스윕 요약",
-        raise_on_error=False,
-    )
+    print(f"SMA sweep HTML summary saved: {file_path}")
     return file_path
 
 
@@ -852,11 +835,10 @@ def run_sma_parameter_sweep_and_notify(
     print('Y')
     print(results_df)
     print(best_payload)
-    sender = TelegramSender()
     summary_message = _build_sweep_plain_summary(results_df, limit=summary_limit)
-    sender.send_message(summary_message, parse_mode=None, raise_on_error=True)
+    print("SMA Sweep Summary:")
+    print(summary_message)
     send_sma_sweep_html_report(
-        sender=sender,
         results_df=results_df,
         short_windows=short_windows,
         long_windows=long_windows,
@@ -868,13 +850,13 @@ def run_sma_parameter_sweep_and_notify(
         print("[WARN] No successful SMA backtest results to report.")
         return 1
 
-    send_sma_backtest_report(sender=sender, **best_payload)
+    send_sma_backtest_report(**best_payload)
     return 0
 
 def run_sma_backtest_and_notify(
     config_override: Optional[Dict[str, Any]] = None,
 ) -> int:
-    """SMA 백테스트를 실행하고, 리포트/차트를 텔레그램으로 전송."""
+    """SMA 백테스트를 실행하고, 리포트/차트를 생성."""
     (
         metrics,
         df_equity,
@@ -886,9 +868,7 @@ def run_sma_backtest_and_notify(
         cfg,
     ) = run_sma_crossover_backtest(config_override=config_override)
 
-    sender = TelegramSender()
     send_sma_backtest_report(
-        sender=sender,
         metrics=metrics,
         df_equity=df_equity,
         trades=trades,

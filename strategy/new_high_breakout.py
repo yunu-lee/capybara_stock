@@ -27,7 +27,6 @@ from core import (
 )
 from core.backtest_report import HtmlReportConfig, build_html_report
 from core.chart import ChartConfig, ChartRenderer, TradeSignal
-from core.telegram import TelegramSender
 from core.backtest_strategy import BaseStrategy
 from core.backtest_types import BacktestResult, Order, TradeRecord
 from core.backtest_data import BacktestDataProvider
@@ -1052,7 +1051,6 @@ def _render_new_high_ticker_chart(
 
 
 def send_new_high_backtest_report(
-    sender: TelegramSender,
     metrics: Dict[str, Any],
     df_equity: "pd.DataFrame",
     trades: List[TradeRecord],
@@ -1172,32 +1170,21 @@ def send_new_high_backtest_report(
     except Exception as exc:
         error_message = f"[ERROR] Failed to build HTML report: {exc}"
         print(error_message)
-        sender.send_message(
-            f"⚠️ 52주 신고가 백테스트 리포트 생성 실패\n```\n{error_message}\n```",
-            raise_on_error=False,
-        )
         raise
 
     message = format_new_high_backtest_message(metrics, cfg)
-    sender.send_message(message, raise_on_error=True)
+    print("52주 신고가 백테스트 결과:")
+    print(message)
 
     equity_chart_path = os.path.abspath(
         os.path.join(html_config.output_dir, html_config.equity_chart_filename)
     )
     if os.path.exists(equity_chart_path):
-        sender.send_photo(
-            equity_chart_path,
-            caption="포트폴리오 vs 벤치마크 누적 수익률",
-            raise_on_error=False,
-        )
+        print(f"Equity chart saved: {equity_chart_path}")
     else:
         print(f"[WARN] Equity chart not found: {equity_chart_path}")
 
-    sender.send_document(
-        html_path,
-        caption="52주 신고가 백테스트 HTML 리포트",
-        raise_on_error=False,
-    )
+    print(f"HTML report saved: {html_path}")
 
 
 def run_new_high_backtest_and_notify(
@@ -1214,9 +1201,7 @@ def run_new_high_backtest_and_notify(
         cfg,
     ) = run_new_high_breakout_backtest(config_override=config_override)
 
-    sender = TelegramSender()
     send_new_high_backtest_report(
-        sender=sender,
         metrics=metrics,
         df_equity=df_equity,
         trades=trades,
