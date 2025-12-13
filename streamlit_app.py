@@ -60,15 +60,27 @@ def create_stock_chart(
         if not all(col in df.columns for col in required_cols):
             return None
         
-        # 서브플롯 생성 (2개 행: 가격 차트, 거래량 차트)
-        fig = make_subplots(
-            rows=2,
-            cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.03,
-            row_heights=[0.7, 0.3],
-            subplot_titles=("가격 차트", "거래량"),
-        )
+        # 서브플롯 생성 (3개 행: 가격 차트, 거래량 차트, RS 차트)
+        # RS가 선택되지 않았으면 2개 행만 사용
+        has_rs = "RS" in indicators
+        if has_rs:
+            fig = make_subplots(
+                rows=3,
+                cols=1,
+                shared_xaxes=True,
+                vertical_spacing=0.03,
+                row_heights=[0.6, 0.2, 0.2],
+                subplot_titles=("가격 차트", "거래량", "RS (Relative Strength)"),
+            )
+        else:
+            fig = make_subplots(
+                rows=2,
+                cols=1,
+                shared_xaxes=True,
+                vertical_spacing=0.03,
+                row_heights=[0.7, 0.3],
+                subplot_titles=("가격 차트", "거래량"),
+            )
         
         # 캔들스틱 차트 추가
         fig.add_trace(
@@ -93,34 +105,25 @@ def create_stock_chart(
         
         # SMA 추가
         if "SMA" in indicators:
-            sma20 = indicators_obj.sma(20)
-            sma60 = indicators_obj.sma(60)
+            sma_windows = [10, 20, 60, 120]
+            sma_colors = ["green", "blue", "orange", "red"]
             
-            # 길이 확인 및 NaN 처리
-            if len(sma20) == len(df):
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["Date"],
-                        y=sma20.values,
-                        name="SMA 20",
-                        line=dict(color="blue", width=1.5),
-                        connectgaps=False,
-                    ),
-                    row=1,
-                    col=1,
-                )
-            if len(sma60) == len(df):
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["Date"],
-                        y=sma60.values,
-                        name="SMA 60",
-                        line=dict(color="orange", width=1.5),
-                        connectgaps=False,
-                    ),
-                    row=1,
-                    col=1,
-                )
+            for window, color in zip(sma_windows, sma_colors):
+                sma = indicators_obj.sma(window)
+                
+                # 길이 확인 및 NaN 처리
+                if len(sma) == len(df):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=df["Date"],
+                            y=sma.values,
+                            name=f"SMA {window}",
+                            line=dict(color=color, width=1.5),
+                            connectgaps=False,
+                        ),
+                        row=1,
+                        col=1,
+                    )
         
         # EMA 추가
         if "EMA" in indicators:
@@ -200,42 +203,52 @@ def create_stock_chart(
                     col=1,
                 )
         
-        # RSI 추가 (별도 y축 사용)
-        if "RSI" in indicators:
-            rsi = indicators_obj.rsi(14)
-            if len(rsi) == len(df):
-                # RSI는 별도 y축으로 표시
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["Date"],
-                        y=rsi.values,
-                        name="RSI",
-                        line=dict(color="red", width=1.5),
-                        yaxis="y2",
-                        connectgaps=False,
-                    ),
-                    row=1,
-                    col=1,
-                )
-                # RSI 기준선 추가
-                fig.add_hline(
-                    y=70,
-                    line_dash="dash",
-                    line_color="red",
-                    opacity=0.5,
-                    row=1,
-                    col=1,
-                    annotation_text="과매수 (70)",
-                )
-                fig.add_hline(
-                    y=30,
-                    line_dash="dash",
-                    line_color="green",
-                    opacity=0.5,
-                    row=1,
-                    col=1,
-                    annotation_text="과매도 (30)",
-                )
+        # RS 추가 (하단 패널)
+        if "RS" in indicators:
+            try:
+                rs_series = stock.compute_rs(window=52)
+                if rs_series is not None and not rs_series.empty:
+                    # RS 시리즈의 인덱스가 Date인 경우
+                    rs_index = pd.to_datetime(rs_series.index)
+                    
+                    # 원본 df의 Date와 매칭하여 RS 값 정렬
+                    rs_aligned = []
+                    for date in df["Date"]:
+                        # 가장 가까운 날짜 찾기
+                        date_diff = (rs_index - pd.to_datetime(date)).abs()
+                        closest_idx = date_diff.idxmin()
+                        closest_date = rs_index[closest_idx]
+                        
+                        # 5일 이내면 매칭, 아니면 NaN
+                        if abs((closest_date - pd.to_datetime(date)).days) <= 5:
+                            rs_aligned.append(rs_series.iloc[closest_idx])
+                        else:
+                            rs_aligned.append(None)
+                    
+                    # RS 차트 추가
+                    fig.add_trace(
+                        go.Scatter(
+                            x=df["Date"],
+                            y=rs_aligned,
+                            name="RS",
+                            line=dict(color="purple", width=1.5),
+                            connectgaps=False,
+                        ),
+                        row=3,
+                        col=1,
+                    )
+                    # RS 기준선 추가 (0선)
+                    fig.add_hline(
+                        y=0,
+                        line_dash="dash",
+                        line_color="gray",
+                        opacity=0.5,
+                        row=3,
+                        col=1,
+                        annotation_text="0 (벤치마크 기준)",
+                    )
+            except Exception as e:
+                print(f"[WARN] RS 계산 실패: {e}")
         
         # MACD 추가
         if "MACD" in indicators:
@@ -314,20 +327,10 @@ def create_stock_chart(
         fig.update_yaxes(title_text="가격", row=1, col=1)
         if "Volume" in df.columns:
             fig.update_yaxes(title_text="거래량", row=2, col=1)
+        if "RS" in indicators:
+            fig.update_yaxes(title_text="RS", row=3, col=1)
         
-        # RSI y축 설정 (오른쪽)
-        if "RSI" in indicators:
-            fig.update_layout(
-                yaxis2=dict(
-                    title="RSI",
-                    overlaying="y",
-                    side="right",
-                    range=[0, 100],
-                    showgrid=False,
-                )
-            )
-        
-        # MACD y축 설정 (오른쪽, RSI 위)
+        # MACD y축 설정 (오른쪽)
         if "MACD" in indicators:
             fig.update_layout(
                 yaxis3=dict(
@@ -383,7 +386,7 @@ with st.sidebar:
     st.subheader("보조지표")
     indicators = st.multiselect(
         "보조지표 선택",
-        options=["SMA", "EMA", "RSI", "MACD", "볼린저 밴드"],
+        options=["SMA", "EMA", "RS", "MACD", "볼린저 밴드"],
         default=["SMA"],
         help="여러 개 선택 가능합니다",
     )
