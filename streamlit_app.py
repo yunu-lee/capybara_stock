@@ -380,6 +380,24 @@ def _render_new_high_breakout_page() -> None:
                 help="전략 내부 준비/계산 과정의 로그를 표준 출력으로 더 많이 남깁니다.",
             )
 
+        st.markdown("#### 리포트 옵션(성능)")
+        ro1, ro2 = st.columns(2)
+        with ro1:
+            include_ticker_charts = st.checkbox(
+                "종목별 차트 생성(느림)",
+                value=False,
+                help=(
+                    "체결(거래) 발생 종목별로 차트를 렌더링하고 리포트에 포함합니다.\n"
+                    "종목 수/기간에 따라 시간이 크게 늘어날 수 있어 기본은 OFF입니다."
+                ),
+            )
+        with ro2:
+            include_trade_summary = st.checkbox(
+                "거래 요약 섹션 표시",
+                value=True,
+                help="거래(매수/매도) 요약을 리포트 하단에 추가합니다. (차트 생성 OFF여도 텍스트 요약은 표시 가능)",
+            )
+
         run_clicked = st.form_submit_button("백테스트 실행")
 
     if not run_clicked:
@@ -472,6 +490,8 @@ def _render_new_high_breakout_page() -> None:
             start_date=start_date,
             end_date=end_date,
             cfg=cfg,
+            include_ticker_charts=bool(include_ticker_charts),
+            include_trade_summary=bool(include_trade_summary),
             on_progress=_report_cb,
         )
     except Exception as exc:

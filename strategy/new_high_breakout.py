@@ -1062,8 +1062,13 @@ def send_new_high_backtest_report(
     end_date: datetime,
     cfg: Dict[str, Any],
     *,
+    include_ticker_charts: bool = True,
+    include_trade_summary: bool = True,
     on_progress: Optional[Callable[[str, float], None]] = None,
 ) -> str:
+    if on_progress:
+        on_progress("리포트 준비 중...", 0.0)
+
     equity_series = df_equity.get("equity")
     if equity_series is None:
         print("[WARN] df_equity 에 'equity' 컬럼이 없어 HTML 리포트를 건너뜁니다.")
@@ -1123,41 +1128,47 @@ def send_new_high_backtest_report(
     """
     html_config = HtmlReportConfig(title="52주 신고가 백테스트 리포트")
     chart_paths: Dict[str, str] = {}
-    seen_tickers: set[str] = set()
-    for trade in trades:
-        ticker = getattr(trade, "ticker", None)
-        if not ticker or ticker in seen_tickers:
-            continue
-        seen_tickers.add(ticker)
-        if on_progress:
-            denom = max(1, len(trades))
-            on_progress("종목별 차트 생성 중...", min(0.9, len(seen_tickers) / denom))
-        try:
-            chart_path = _render_new_high_ticker_chart(
-                ticker=ticker,
-                data_provider=data_provider,
-                start_date=start_date,
-                end_date=end_date,
-                trades=trades,
-                ma_window=ma_window,
-                high_lookback=high_lookback,
-            )
-        except Exception as exc:
-            print(f"[WARN] Failed to render chart for {ticker}: {exc}")
-            continue
-        chart_paths[ticker] = chart_path
+    seen_tickers: set[str] = {
+        getattr(trade, "ticker", None)
+        for trade in trades
+        if getattr(trade, "ticker", None)
+    }
 
-    for ticker in seen_tickers:
-        latest_price_map[ticker] = _get_latest_price(data_provider, ticker, end_date)
+    if include_ticker_charts and seen_tickers:
+        tickers = sorted(seen_tickers)
+        total = max(1, len(tickers))
+        for idx, ticker in enumerate(tickers, start=1):
+            if on_progress:
+                on_progress("종목별 차트 생성 중... (느림)", min(0.9, idx / total))
+            try:
+                chart_path = _render_new_high_ticker_chart(
+                    ticker=ticker,
+                    data_provider=data_provider,
+                    start_date=start_date,
+                    end_date=end_date,
+                    trades=trades,
+                    ma_window=ma_window,
+                    high_lookback=high_lookback,
+                )
+            except Exception as exc:
+                print(f"[WARN] Failed to render chart for {ticker}: {exc}")
+                continue
+            chart_paths[ticker] = chart_path
+
+    if include_trade_summary:
+        for ticker in seen_tickers:
+            latest_price_map[ticker] = _get_latest_price(data_provider, ticker, end_date)
 
     stats_html, sell_return_series = _compute_trade_stats_and_returns(trades)
 
-    trade_summary_html = _render_trade_summary_html(
-        trades=trades,
-        chart_paths=chart_paths,
-        latest_price_map=latest_price_map,
-        html_output_dir=html_config.output_dir,
-    )
+    trade_summary_html = ""
+    if include_trade_summary:
+        trade_summary_html = _render_trade_summary_html(
+            trades=trades,
+            chart_paths=chart_paths,
+            latest_price_map=latest_price_map,
+            html_output_dir=html_config.output_dir,
+        )
     summary_sections = ""
     if stats_html:
         summary_sections += stats_html
