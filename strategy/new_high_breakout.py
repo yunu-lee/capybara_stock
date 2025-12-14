@@ -5,7 +5,7 @@ import math
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import os
 
 try:
@@ -127,6 +127,7 @@ class NewHighBreakoutStrategy(BaseStrategy):
         short_term_penalty_window: int = 10,
         short_term_penalty_threshold: float = 0.12,
         short_term_penalty_weight: float = 0.2,
+        max_new_positions: int = 20,
     ) -> None:
         super().__init__(universe, data_provider, debug=debug)
         if not universe:
@@ -141,7 +142,7 @@ class NewHighBreakoutStrategy(BaseStrategy):
         self.benchmark = getattr(data_provider, "benchmark", None)
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
-        self.max_new_positions = 20
+        self.max_new_positions = max(1, int(max_new_positions))
         approx_calendar_days = int(self.high_lookback * 365 / 252) + 60
         self._history_margin_days = max(approx_calendar_days, self.ma_window * 6, 365)
         self._indicator_cache: Dict[str, pd.DataFrame] = {}
@@ -328,7 +329,7 @@ class NewHighBreakoutStrategy(BaseStrategy):
         )
         frame["date"] = frame["Date"].dt.normalize()
         frame = frame.set_index("date")
-        return frame[["Close", "sma", "new_high", "ready"]]
+        return frame[["Close", "sma", "new_high", "ready", "recent_new_high_count"]]
 
     def _get_indicator_row(self, ticker: str, day_key: datetime) -> Optional[pd.Series]:
         frame = self._indicator_cache.get(ticker)
@@ -548,6 +549,7 @@ def run_new_high_breakout_backtest(
         short_term_penalty_window=int(cfg.get("short_term_penalty_window", 10)),
         short_term_penalty_threshold=float(cfg.get("short_term_penalty_threshold", 0.12)),
         short_term_penalty_weight=float(cfg.get("short_term_penalty_weight", 0.2)),
+        max_new_positions=int(cfg.get("max_new_positions", 20)),
     )
 
     execution_engine = BacktestExecutionEngine()
@@ -1059,16 +1061,18 @@ def send_new_high_backtest_report(
     start_date: datetime,
     end_date: datetime,
     cfg: Dict[str, Any],
-) -> None:
+    *,
+    on_progress: Optional[Callable[[str, float], None]] = None,
+) -> str:
     equity_series = df_equity.get("equity")
     if equity_series is None:
         print("[WARN] df_equity 에 'equity' 컬럼이 없어 HTML 리포트를 건너뜁니다.")
-        return
+        return ""
 
     equity_curve = equity_series.dropna()
     if equity_curve.empty:
         print("[WARN] Equity curve 가 비어 있어 HTML 리포트를 건너뜁니다.")
-        return
+        return ""
 
     benchmark_curve = None
     if "benchmark" in df_equity.columns:
@@ -1125,6 +1129,9 @@ def send_new_high_backtest_report(
         if not ticker or ticker in seen_tickers:
             continue
         seen_tickers.add(ticker)
+        if on_progress:
+            denom = max(1, len(trades))
+            on_progress("종목별 차트 생성 중...", min(0.9, len(seen_tickers) / denom))
         try:
             chart_path = _render_new_high_ticker_chart(
                 ticker=ticker,
@@ -1185,6 +1192,9 @@ def send_new_high_backtest_report(
         print(f"[WARN] Equity chart not found: {equity_chart_path}")
 
     print(f"HTML report saved: {html_path}")
+    if on_progress:
+        on_progress("리포트 생성 완료", 1.0)
+    return html_path
 
 
 def run_new_high_backtest_and_notify(
