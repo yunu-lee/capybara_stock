@@ -172,42 +172,49 @@ def _run_new_high_backtest_with_progress(
 def _render_new_high_breakout_page() -> None:
     st.subheader("New High Breakout (52주 신고가)")
 
-    with st.form("new_high_breakout_form"):
-        col_u1, col_u2 = st.columns([1, 1])
-        with col_u1:
-            universe_mode = st.selectbox(
-                "유니버스",
-                options=["자동(KOSPI200+KOSDAQ150)", "샘플(20종)", "직접 입력"],
-                index=1,
-                help=(
-                    "- 자동: KOSPI200 + KOSDAQ150 구성 종목을 KRX에서 조회해 유니버스를 구성합니다.\n"
-                    "- 샘플: 테스트용 20개 종목(코드 고정)을 사용합니다.\n"
-                    "- 직접 입력: 원하는 종목 티커 리스트를 직접 넣습니다."
-                ),
-            )
-        with col_u2:
-            benchmark = st.text_input(
-                "벤치마크",
-                value=str(NEW_HIGH_BACKTEST_CONFIG.get("benchmark", "069500.KS")),
-                help=(
-                    "성과 비교 및 RS(상대강도) 계산에 사용하는 기준 티커입니다.\n"
-                    "예) 069500.KS(KODEX 200), 102110.KS 등"
-                ),
-            )
+    # NOTE: form 안의 위젯은 submit 전까지 rerun이 발생하지 않아
+    # '직접 입력' 선택 시 텍스트 입력란이 즉시 뜨지 않는 문제가 생길 수 있어,
+    # 유니버스 선택/입력은 form 밖에서 즉시 반응하도록 구성합니다.
+    col_u1, col_u2 = st.columns([1, 1])
+    with col_u1:
+        universe_mode = st.selectbox(
+            "유니버스",
+            options=["자동(KOSPI200+KOSDAQ150)", "샘플(20종)", "직접 입력"],
+            index=1,
+            key="nh_universe_mode",
+            help=(
+                "- 자동: KOSPI200 + KOSDAQ150 구성 종목을 KRX에서 조회해 유니버스를 구성합니다.\n"
+                "- 샘플: 테스트용 20개 종목(코드 고정)을 사용합니다.\n"
+                "- 직접 입력: 원하는 종목 티커 리스트를 직접 넣습니다."
+            ),
+        )
+    with col_u2:
+        benchmark = st.text_input(
+            "벤치마크",
+            value=str(NEW_HIGH_BACKTEST_CONFIG.get("benchmark", "069500.KS")),
+            key="nh_benchmark",
+            help=(
+                "성과 비교 및 RS(상대강도) 계산에 사용하는 기준 티커입니다.\n"
+                "예) 069500.KS(KODEX 200), 102110.KS 등"
+            ),
+        )
 
-        universe_text = ""
-        if universe_mode == "직접 입력":
-            universe_text = st.text_area(
-                "종목 리스트(쉼표/줄바꿈 구분, 6자리 코드는 .KS로 자동 보정)",
-                value="005930.KS, 000660.KS",
-                height=120,
-                help=(
-                    "입력 예:\n"
-                    "- 005930.KS, 000660.KS\n"
-                    "- 005930 000660 (6자리만 넣으면 .KS로 자동 보정)\n"
-                    "주의: KOSDAQ은 보통 .KQ를 사용하므로 필요 시 직접 .KQ로 입력하세요."
-                ),
-            )
+    universe_text = st.text_area(
+        "종목 리스트(쉼표/줄바꿈 구분, 6자리 코드는 .KS로 자동 보정)",
+        value="005930.KS, 000660.KS",
+        height=120,
+        key="nh_universe_text",
+        disabled=(universe_mode != "직접 입력"),
+        help=(
+            "유니버스를 '직접 입력'으로 선택했을 때만 입력됩니다.\n"
+            "입력 예:\n"
+            "- 005930.KS, 000660.KS\n"
+            "- 005930 000660 (6자리만 넣으면 .KS로 자동 보정)\n"
+            "주의: KOSDAQ은 보통 .KQ를 사용하므로 필요 시 직접 .KQ로 입력하세요."
+        ),
+    )
+
+    with st.form("new_high_breakout_form"):
 
         col_d1, col_d2, col_d3 = st.columns([1, 1, 1])
         with col_d1:
