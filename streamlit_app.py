@@ -179,9 +179,21 @@ def _render_new_high_breakout_page() -> None:
                 "유니버스",
                 options=["자동(KOSPI200+KOSDAQ150)", "샘플(20종)", "직접 입력"],
                 index=1,
+                help=(
+                    "- 자동: KOSPI200 + KOSDAQ150 구성 종목을 KRX에서 조회해 유니버스를 구성합니다.\n"
+                    "- 샘플: 테스트용 20개 종목(코드 고정)을 사용합니다.\n"
+                    "- 직접 입력: 원하는 종목 티커 리스트를 직접 넣습니다."
+                ),
             )
         with col_u2:
-            benchmark = st.text_input("벤치마크", value=str(NEW_HIGH_BACKTEST_CONFIG.get("benchmark", "069500.KS")))
+            benchmark = st.text_input(
+                "벤치마크",
+                value=str(NEW_HIGH_BACKTEST_CONFIG.get("benchmark", "069500.KS")),
+                help=(
+                    "성과 비교 및 RS(상대강도) 계산에 사용하는 기준 티커입니다.\n"
+                    "예) 069500.KS(KODEX 200), 102110.KS 등"
+                ),
+            )
 
         universe_text = ""
         if universe_mode == "직접 입력":
@@ -189,48 +201,177 @@ def _render_new_high_breakout_page() -> None:
                 "종목 리스트(쉼표/줄바꿈 구분, 6자리 코드는 .KS로 자동 보정)",
                 value="005930.KS, 000660.KS",
                 height=120,
+                help=(
+                    "입력 예:\n"
+                    "- 005930.KS, 000660.KS\n"
+                    "- 005930 000660 (6자리만 넣으면 .KS로 자동 보정)\n"
+                    "주의: KOSDAQ은 보통 .KQ를 사용하므로 필요 시 직접 .KQ로 입력하세요."
+                ),
             )
 
         col_d1, col_d2, col_d3 = st.columns([1, 1, 1])
         with col_d1:
-            start_dt = st.date_input("시작일", value=date.fromisoformat(str(NEW_HIGH_BACKTEST_CONFIG.get("start_date", "2025-04-01"))))
+            start_dt = st.date_input(
+                "시작일",
+                value=date.fromisoformat(str(NEW_HIGH_BACKTEST_CONFIG.get("start_date", "2025-04-01"))),
+                help="백테스트 시뮬레이션을 시작할 날짜입니다. (거래일 기준으로 처리됩니다)",
+            )
         with col_d2:
             end_dt_default = date.today()
-            end_dt = st.date_input("종료일", value=end_dt_default)
+            end_dt = st.date_input(
+                "종료일",
+                value=end_dt_default,
+                help="백테스트 시뮬레이션을 종료할 날짜입니다. (거래일 기준으로 처리됩니다)",
+            )
         with col_d3:
-            initial_cash_krw = st.number_input("초기자금(KRW)", min_value=1_000_000, step=1_000_000, value=100_000_000)
+            initial_cash_krw = st.number_input(
+                "초기자금(KRW)",
+                min_value=1_000_000,
+                step=1_000_000,
+                value=100_000_000,
+                help="백테스트 시작 시 보유 현금입니다. (원화 기준)",
+            )
 
         st.markdown("#### 종목 선정/매매 규칙")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            allocation_pct = st.number_input("1회 배분 비중(0~1)", min_value=0.001, max_value=1.0, value=0.05, step=0.01, format="%.3f")
+            allocation_pct_percent = st.number_input(
+                "1회 배분 비중(%)",
+                min_value=0.1,
+                max_value=100.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("allocation_pct", 0.05)) * 100.0,
+                step=0.5,
+                format="%.2f",
+                help=(
+                    "신규 매수(진입) 시 포트폴리오 평가금액 대비 한 종목에 배정할 목표 비중입니다.\n"
+                    "예) 5% 입력 시, 진입 시점의 포트폴리오 가치의 약 5%를 매수에 사용합니다."
+                ),
+            )
         with c2:
-            stop_loss_pct = st.number_input("손절 비율(0~1)", min_value=0.001, max_value=1.0, value=0.08, step=0.01, format="%.3f")
+            stop_loss_pct_percent = st.number_input(
+                "손절 비율(%)",
+                min_value=0.1,
+                max_value=100.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("stop_loss_pct", 0.08)) * 100.0,
+                step=0.5,
+                format="%.2f",
+                help="매수가 대비 손실이 해당 비율 이상이면 전량 매도(손절)합니다.",
+            )
         with c3:
-            ma_window = st.number_input("MA 윈도우", min_value=5, max_value=200, value=20, step=1)
+            ma_window = st.number_input(
+                "이동평균(MA) 기간(일)",
+                min_value=5,
+                max_value=200,
+                value=int(NEW_HIGH_BACKTEST_CONFIG.get("ma_window", 20)),
+                step=1,
+                help="추세 필터/청산 조건에 쓰는 이동평균 기간입니다. (기본: 20일)",
+            )
         with c4:
-            high_lookback = st.number_input("신고가 룩백(거래일)", min_value=20, max_value=600, value=252, step=1)
+            high_lookback = st.number_input(
+                "신고가 룩백(거래일)",
+                min_value=20,
+                max_value=600,
+                value=int(NEW_HIGH_BACKTEST_CONFIG.get("high_lookback", 260)),
+                step=1,
+                help="최근 N거래일 기준 신고가(52주 신고가 근사)를 계산할 룩백 길이입니다. (기본: 260거래일)",
+            )
 
         st.markdown("#### 랭킹(종목 선정 기준)")
         r1, r2, r3 = st.columns(3)
         with r1:
-            rank_weight_cap = st.number_input("시총 가중치", min_value=0.0, max_value=5.0, value=0.0, step=0.1, format="%.2f")
-            rank_weight_rs = st.number_input("RS 가중치", min_value=0.0, max_value=5.0, value=0.0, step=0.1, format="%.2f")
+            rank_weight_cap_percent = st.number_input(
+                "시총 가중치(%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("rank_weight_cap", 0.0)) * 100.0,
+                step=1.0,
+                format="%.1f",
+                help="후보 종목 랭킹 점수에서 '시가총액 스코어'가 차지하는 비중(가중치)입니다. 0%면 미사용.",
+            )
+            rank_weight_rs_percent = st.number_input(
+                "RS 가중치(%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("rank_weight_rs", 0.0)) * 100.0,
+                step=1.0,
+                format="%.1f",
+                help="후보 종목 랭킹 점수에서 '상대강도(RS)'가 차지하는 비중(가중치)입니다. 0%면 미사용.",
+            )
         with r2:
-            fresh_new_high_window = st.number_input("신선도 윈도우(일)", min_value=1, max_value=120, value=30, step=1)
-            fresh_new_high_weight = st.number_input("신선도 가중치", min_value=0.0, max_value=5.0, value=1.0, step=0.1, format="%.2f")
+            fresh_new_high_window = st.number_input(
+                "신선도 윈도우(일)",
+                min_value=1,
+                max_value=120,
+                value=int(NEW_HIGH_BACKTEST_CONFIG.get("fresh_new_high_window", 30)),
+                step=1,
+                help="최근 N일 내 신고가 발생 횟수를 세어 '신선도'를 계산하는 기간입니다.",
+            )
+            fresh_new_high_weight_percent = st.number_input(
+                "신선도 가중치(%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("fresh_new_high_weight", 1.0)) * 100.0,
+                step=1.0,
+                format="%.1f",
+                help=(
+                    "후보 종목 랭킹 점수에서 '신선도'가 차지하는 비중(가중치)입니다.\n"
+                    "신선도는 최근 윈도우 내 신고가 횟수가 적을수록 점수가 높습니다."
+                ),
+            )
         with r3:
-            short_term_penalty_window = st.number_input("과열 윈도우(일)", min_value=1, max_value=60, value=10, step=1)
-            short_term_penalty_threshold = st.number_input("과열 임계값(0~1)", min_value=0.0, max_value=1.0, value=0.12, step=0.01, format="%.3f")
-            short_term_penalty_weight = st.number_input("과열 패널티 가중치", min_value=0.0, max_value=5.0, value=0.0, step=0.1, format="%.2f")
+            short_term_penalty_window = st.number_input(
+                "과열 윈도우(일)",
+                min_value=1,
+                max_value=60,
+                value=int(NEW_HIGH_BACKTEST_CONFIG.get("short_term_penalty_window", 10)),
+                step=1,
+                help="최근 N일 수익률이 과열 기준을 넘으면 패널티를 주는 기간입니다.",
+            )
+            short_term_penalty_threshold_percent = st.number_input(
+                "과열 임계값(%)",
+                min_value=0.0,
+                max_value=200.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("short_term_penalty_threshold", 0.12)) * 100.0,
+                step=1.0,
+                format="%.1f",
+                help="최근 과열 윈도우 동안의 수익률이 이 값(%)을 초과하면 과열 패널티 대상이 됩니다.",
+            )
+            short_term_penalty_weight_percent = st.number_input(
+                "과열 패널티 가중치(%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("short_term_penalty_weight", 0.0)) * 100.0,
+                step=1.0,
+                format="%.1f",
+                help="과열 조건에 해당할 때 랭킹 점수에서 차감되는 패널티의 비중(가중치)입니다. 0%면 미사용.",
+            )
 
         opt1, opt2, opt3 = st.columns(3)
         with opt1:
-            max_new_positions = st.number_input("하루 신규 편입 상한", min_value=1, max_value=100, value=20, step=1)
+            max_new_positions = st.number_input(
+                "하루 신규 편입 상한",
+                min_value=1,
+                max_value=100,
+                value=20,
+                step=1,
+                help="하루에 새로 매수(진입)할 수 있는 최대 종목 수입니다.",
+            )
         with opt2:
-            cost_pct = st.number_input("거래비용(%)", min_value=0.0, max_value=5.0, value=0.1, step=0.05, format="%.2f")
+            cost_pct = st.number_input(
+                "거래비용(%)",
+                min_value=0.0,
+                max_value=5.0,
+                value=float(NEW_HIGH_BACKTEST_CONFIG.get("cost_pct", 0.1)),
+                step=0.05,
+                format="%.2f",
+                help="매수/매도 체결 가격에 반영할 거래비용(수수료+슬리피지) 가정치입니다. 예: 0.10% 입력",
+            )
         with opt3:
-            debug = st.checkbox("디버그 로그", value=False)
+            debug = st.checkbox(
+                "디버그 로그",
+                value=False,
+                help="전략 내부 준비/계산 과정의 로그를 표준 출력으로 더 많이 남깁니다.",
+            )
 
         run_clicked = st.form_submit_button("백테스트 실행")
 
@@ -253,20 +394,29 @@ def _render_new_high_breakout_page() -> None:
         st.error("유니버스가 비어 있습니다. 종목을 입력하거나 다른 유니버스를 선택해주세요.")
         return
 
+    # 퍼센트 입력값은 내부 계산용(소수)으로 변환
+    allocation_pct = float(allocation_pct_percent) / 100.0
+    stop_loss_pct = float(stop_loss_pct_percent) / 100.0
+    rank_weight_cap = float(rank_weight_cap_percent) / 100.0
+    rank_weight_rs = float(rank_weight_rs_percent) / 100.0
+    fresh_new_high_weight = float(fresh_new_high_weight_percent) / 100.0
+    short_term_penalty_threshold = float(short_term_penalty_threshold_percent) / 100.0
+    short_term_penalty_weight = float(short_term_penalty_weight_percent) / 100.0
+
     cfg: Dict[str, Any] = {
         "initial_cash_krw": float(initial_cash_krw),
-        "allocation_pct": float(allocation_pct),
-        "stop_loss_pct": float(stop_loss_pct),
+        "allocation_pct": allocation_pct,
+        "stop_loss_pct": stop_loss_pct,
         "ma_window": int(ma_window),
         "high_lookback": int(high_lookback),
         "cost_pct": float(cost_pct),
-        "rank_weight_cap": float(rank_weight_cap),
-        "rank_weight_rs": float(rank_weight_rs),
+        "rank_weight_cap": rank_weight_cap,
+        "rank_weight_rs": rank_weight_rs,
         "fresh_new_high_window": int(fresh_new_high_window),
-        "fresh_new_high_weight": float(fresh_new_high_weight),
+        "fresh_new_high_weight": fresh_new_high_weight,
         "short_term_penalty_window": int(short_term_penalty_window),
-        "short_term_penalty_threshold": float(short_term_penalty_threshold),
-        "short_term_penalty_weight": float(short_term_penalty_weight),
+        "short_term_penalty_threshold": short_term_penalty_threshold,
+        "short_term_penalty_weight": short_term_penalty_weight,
         "max_new_positions": int(max_new_positions),
         "debug": bool(debug),
     }

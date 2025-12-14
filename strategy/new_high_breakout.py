@@ -41,7 +41,7 @@ NEW_HIGH_BACKTEST_CONFIG: Dict[str, Any] = {
     "allocation_pct": 0.05,
     "stop_loss_pct": 0.08,
     "ma_window": 20,
-    "high_lookback": 252,
+    "high_lookback": 260,
     "cost_pct": 0.1,
     "debug": False,
     "rank_weight_cap": 0.0,
