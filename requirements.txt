@@ -1,1 +1,10 @@
 streamlit
+plotly
+pandas
+numpy
+matplotlib
+mplfinance
+pykrx
+yfinance
+Pillow
+setuptools
